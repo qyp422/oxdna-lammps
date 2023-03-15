@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-02-20 14:58:49
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-03 21:18:02
+LastEditTime: 2023-03-15 10:32:01
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -1771,7 +1771,7 @@ class File_system(Plot_system):
         plt.xlim(0-0.5,y_n-0.5)
         plt.ylim(0.5,self.n_target+0.5)
         plt.xticks(np.linspace(0,y_n-1,5))
-        plt.yticks(np.linspace(1,self.n_probe,6))
+        plt.yticks(np.linspace(1,self.n_target,6))
         plt.colorbar(im,orientation = 'vertical')
         
         plt.savefig(file_name + 'probe.jpg',dpi=300)
