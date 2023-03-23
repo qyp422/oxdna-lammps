@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-11-12 11:09:37
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-06 20:40:46
+LastEditTime: 2023-03-16 15:07:12
 Description: 
 
 Copyright (c) 2022 by qyp422, All Rights Reserved. 
@@ -409,6 +409,57 @@ class StrandGenerator():
         # with open('probe8type_ovt.data','w+') as f:
         #     f.write(s.lammps_output)
         # print('-----lammps generated done!')
+
+    @classmethod
+    def gen_probe_array(self,box,probe_array,seq='CC',neighbor=0,bool_double=False):
+        #probe seq
+        seqp = seq
+        s = base.System(np.array(box))
+        if isinstance(probe_array,int):
+            probe_array = [probe_array,probe_array]
+
+        # set Initial 
+        boxsize = s.l_box[:2]
+        bool_circular = False
+        shift = boxsize/probe_array/2
+
+        pos_range_x = np.linspace(s._box[0]+shift[0],s._box[1]-shift[0],probe_array[0],endpoint=True)
+        pos_range_y = np.linspace(s._box[2]+shift[1],s._box[3]-shift[1],probe_array[1],endpoint=True)
+        # crate target
+        if neighbor == 0:
+            for i in pos_range_x:
+                for j in pos_range_y:
+                    s.add_strands(self.generate(len(seqp), sequence=seqp,start_pos=np.array([i,j,0]), double=False, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+
+        if bool_double:
+            for i in range(probe_array[0]*probe_array[1]):
+                s.add_strands(self.generate_complementary_strand(s._strands[i]), check_overlap=False)
+
+        
+        s.update_probe_target_system(probe_mol=probe_array[0]*probe_array[1])
+        return s
+        # s.get_lammps_data_file("probe8type.data", "top.data")
+        # with open('probe8type_ovt.data','w+') as f:
+        #     f.write(s.lammps_output)
+        # print('-----lammps generated done!')
+
+    @classmethod
+    def generate_complementary_strand(self,ns1): #generate complementary strand of ns1
+        ns2 = base.Strand()
+        ds_start = 0
+        ds_end = len(ns1._sequence)
+        # print(ns1._sequence)
+        # print(ds_end)
+        for i in reversed(range(ds_start, ds_end)):
+            # Note that the complement strand is built in reverse order
+            nt = ns1._nucleotides[i]
+            a1 = -nt._a1
+            a3 = -nt._a3
+            nt2_cm_pos = -(base.FENE_EPS + 2*base.POS_BACK) * a1 + nt.cm_pos
+            ns2.add_nucleotide(base.Nucleotide(nt2_cm_pos, mf.exyz_to_quat(a1, a3), 3-ns1._sequence[i]))
+        # print(ns2._sequence)
+        return ns2
+
 
 class Lammps_in_file():
     @classmethod
@@ -851,7 +902,7 @@ class Lammps_in_file():
         temperature = T/3000
         output_freq = 100000
         energy_freq = 100000
-        in_name = str(in_file_name) + '_break_T_' + str(T)+'_l_'+str(r)+'_r_'+str(degree)
+        in_name = str(in_file_name) + '_break_T_' + str(T)
     # ends parameter
         Vx = 0.0
         Vy = 0.0
@@ -1001,6 +1052,192 @@ class Lammps_in_file():
 
         print(f'lammps infile done! total {num_file} files\n')
 
+    @classmethod
+    def in_file_generate_with_relax_4type_fixwall(self,in_file_name,read_file_name,dimension = 3, num_file = 1,T = 300,seq = 'seqdep',salt = 0.2,damp = 2.5,timestep = 0.005,time = 100000000,n_probe=36,n_target=1,bplen=30,surface_density=-1,target_density=-1,runflag=True,path=os.getcwd()):
+        # all the probe is type  
+        t_relaxation = 10**5 
+        t_r = 10**7 # for oxdna relaxation of inital stucture t should be o(10^6) 
+        k = n_probe # another symbol n_target
+        wall_molecule = n_target+n_probe+1
+        temperature = T/3000.0
+        output_freq = 100000
+        energy_freq = 100000
+        in_name = str(in_file_name) + '_T_' + str(T)
+        Ax = '0.0'
+        Ay = '0.0'
+        Az = '0.0'
+        Vx = '0.0'
+        Vy = '0.0'
+        Vz = '0.0'
+        dnanve = ''
+        fixdna = ''
+        damp_relax = 78.9375
+        # optional parameters
+        only_dna_model = True #True for only output DNA lammpstrj
+        neighbor_style = 'nsq' #bin or nsq for neighbor
+        neighbor_style_dict = {'bin':'2.0 bin','nsq':'1.0 nsq'} #dict of neighbor
+    
+        balance_thresh = 1.05 # imbalance threshold that must be exceeded to perform a re-balance
+        balance_style = 'rcb' # rcb or shift
+        balance_style_dict = {'rcb':'rcb','shift':'shift'}
+        # check style
+        if neighbor_style not in neighbor_style_dict:
+            sys.exit('neighbor_style wrong')
+        if balance_style not in balance_style_dict:
+            sys.exit('balance_style wrong')
+    
+        #balance_fix input script
+        if balance_style == 'rcb':
+            balance_fix = 'comm_style tiled\n'
+            balance_fix += 'fix 3 all balance 1000 ' + str(balance_thresh) + ' ' + balance_style_dict[balance_style] + '\n'
+        if balance_style == 'shift':
+            balance_fix = 'fix 3 all balance 1000 ' + str(balance_thresh) + ' ' + balance_style_dict[balance_style] + ' xyz 10 ' + str(balance_thresh) +'\n'
+    
+        # # only 1 61 ... are fix
+        # for i in range(k):
+        #     dnanve += str(2+i*60) + ':' + str(60+i*60) + ' '
+        # fixdna += '1:' + str(k*60-59) + ':60'
+        for i in range(k):
+            # fix every probe first and fifth nt
+            dnanve += str(2+i*bplen) + ':' + str(bplen+i*bplen) + ' '
+            fixdna += str(1+i*bplen) + ' '
+        
+        # add target id
+        if n_target:
+            dnanve += str(k*bplen+1) + ':' + str(k*bplen+n_target*bplen)
+    
+        # system
+        ll = '# lammps in file with probe molecule %d with type 1 2 3 4\n'%(k)
+        ll+= '# lammps in file with target molecule %d with type 1 2 3 4\n'%(n_target)
+        ll+= '# DNA bp_len is %d\n'%(bplen)
+        ll+= '# LAMMPS data file probe surface density is %f\n' % surface_density
+        ll+= '# LAMMPS data file target density is %f\n' % target_density
+        ll+= '# probe fix by only fisrt bp\n'
+    
+        for i in range(num_file):
+            random_seed = random.randint(1, 50000) #set random for langevin
+            outputfile_name = 'original_T_' +  str(T) + '_' + str(i) + '.lammpstrj' #set outputfile_name
+            prefile_name = 'pre_T_' +  str(T) + '_' + str(i) + '.lammpstrj' #set prefile_name
+            outputenergy_name = 'original_T_' +  str(T) + '_' + str(i) +  '_energy.txt'
+            preenergy_name = 'pre_T_' +  str(T) + '_' + str(i) +  '_energy.txt'
+            temperature_l = temperature #temperature for langevin
+            out = open(os.path.join(path,str(in_name)+ '_' + str(i)),'w')
+            out.write(ll)
+            out.write('variable ofreq	equal %d\n' % output_freq)
+            out.write('variable efreq	equal %d\n' % energy_freq)
+            out.write('echo	screen\n')
+            out.write('units lj\n')
+            out.write('\n')
+            out.write('dimension %d\n'% dimension)
+            out.write('\n')
+            out.write('newton on\n')
+            out.write('\n')
+            out.write('boundary  p p p\n')
+            out.write('atom_style hybrid bond ellipsoid oxdna\n')
+            out.write('atom_modify sort 0 1.0\n')
+            out.write('\n')
+            out.write('# Pair interactions require lists of neighbours to be calculated\n')
+            out.write('neighbor %s\n'% neighbor_style_dict[neighbor_style])
+            out.write('neigh_modify every 1 delay 0 check yes\n')
+            out.write('\n')
+            out.write('read_data %s\n'% read_file_name)
+            out.write('set atom * mass 3.1575\n')
+            out.write('\n')
+            out.write('group all type 1 2 3 4\n')
+            out.write('group dna type 1 2 3 4\n')
+            out.write('group dnanve id %s\n'% dnanve)
+            out.write('group fixdna id %s\n'% fixdna)
+            out.write('\n')
+            out.write('# oxDNA bond interactions - FENE backbone\n')
+            out.write('bond_style oxdna2/fene\n')
+            out.write('bond_coeff * 2.0 0.25 0.7564\n')
+            out.write('special_bonds lj 0 1 1\n')
+            out.write('\n')
+            out.write('# oxDNA pair interactions\n')
+            out.write('pair_style hybrid/overlay oxdna2/excv oxdna2/stk oxdna2/hbond oxdna2/xstk oxdna2/coaxstk oxdna2/dh\n')
+            out.write('pair_coeff * * oxdna2/excv    2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32\n')
+            out.write('pair_coeff * * oxdna2/stk     %s %.4f 1.3523 2.6717 6.0 0.4 0.9 0.32 0.75 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 2.0 0.65 2.0 0.65\n'% (seq,temperature))
+            out.write('pair_coeff * * oxdna2/hbond   %s 0.0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45\n'% seq)
+            out.write('pair_coeff 1 4 oxdna2/hbond   %s 1.0678 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45\n'% seq)
+            out.write('pair_coeff 2 3 oxdna2/hbond   %s 1.0678 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45\n'% seq)
+            out.write('pair_coeff * * oxdna2/xstk    47.5 0.575 0.675 0.495 0.655 2.25 0.791592653589793 0.58 1.7 1.0 0.68 1.7 1.0 0.68 1.5 0 0.65 1.7 0.875 0.68 1.7 0.875 0.68\n')
+            out.write('pair_coeff * * oxdna2/coaxstk 58.5 0.4 0.6 0.22 0.58 2.0 2.891592653589793 0.65 1.3 0 0.8 0.9 0 0.95 0.9 0 0.95 40.0 3.116592653589793\n')
+            out.write('pair_coeff * * oxdna2/dh      %.4f %.4f 0.815\n'% (temperature,salt))
+            out.write('\n')
+            out.write('# NVE ensemble\n')
+            out.write('fix 1 dnanve nve/dotc/langevin %.4f %.4f %.4f %d angmom 10\n'% (temperature_l,temperature_l,damp_relax,random_seed))
+            out.write('\n')
+            # out.write('comm_style tiled\n')
+            # out.write('comm_modify cutoff 5.0\n') updata to balance_fix
+            out.write(balance_fix)
+            out.write('\n')
+            out.write('# lj wall\n')
+            out.write('fix 2 dnanve wall/lj126 zlo EDGE 1.0 1.0 1.12246 zhi EDGE 1.0 1.0 1.12246 pbc yes\n')
+    
+            out.write('# fixmove \n')
+            out.write('variable	Ax atom %s \n'% Ax)
+            out.write('variable	Ay atom %s \n'% Ay)
+            out.write('variable	Az atom %s \n'% Az)
+            out.write('variable	Vx atom %s \n'% Vx)
+            out.write('variable	Vy atom %s \n'% Vy)
+            out.write('variable	Vz atom %s \n'% Vz)
+            out.write('fix 12 fixdna move variable v_Ax v_Ay v_Az v_Vx v_Vy v_Vz \n')
+            out.write('\n')
+            out.write('timestep %f\n'% timestep)
+            out.write('\n')
+            out.write('# output\n')
+            if only_dna_model:
+                out.write('compute quat dna property/atom quatw quati quatj quatk\n')
+                out.write('dump quat dna custom %d %s id mol type x y z c_quat[1] c_quat[2] c_quat[3] c_quat[4]\n' % (output_freq , prefile_name))
+            else:
+                out.write('compute quat all property/atom quatw quati quatj quatk\n')
+                out.write('dump quat all custom %d %s id mol type x y z c_quat[1] c_quat[2] c_quat[3] c_quat[4]\n' % (output_freq , prefile_name))
+            out.write('dump_modify quat sort id\n')
+            out.write('compute erot dna erotate/asphere\n')
+            out.write('compute ekin dna ke\n')
+            out.write('compute peratom dna pe/atom\n')
+            out.write('compute epot dna reduce sum c_peratom\n')
+            out.write('variable erot equal c_erot\n')
+            out.write('variable ekin equal c_ekin\n')
+            out.write('variable epot equal c_epot\n')
+            out.write('variable etot equal c_erot+c_ekin+c_epot\n')
+            out.write('fix 5 all print ${efreq} "$(step)  ekin = ${ekin} |  erot = ${erot} | epot = ${epot} | etot = ${etot}" file %s\n' % preenergy_name )
+            out.write('\n')
+            out.write('# relaxation time\n')
+            out.write('run %d\n'% t_r)
+            out.write('run %d\n'% t_r)
+            if runflag:
+                out.write('\n')
+                out.write('# undump\n')
+                out.write('undump quat\n')
+                out.write('unfix 5\n')
+                out.write('unfix 1\n')        
+                out.write('\n')
+                out.write('\n')
+                out.write('# MD simulation step time\n')
+                out.write('fix 30 dnanve nve/dotc/langevin %.4f %.4f %.4f %d angmom 10\n'% (temperature_l,temperature_l,damp,random_seed))
+                out.write('\n')
+                if only_dna_model:
+                    out.write('dump quatt dna custom %d %s id mol type x y z c_quat[1] c_quat[2] c_quat[3] c_quat[4]\n' % (output_freq , outputfile_name))
+                else:
+                    out.write('dump quatt all custom %d %s id mol type x y z c_quat[1] c_quat[2] c_quat[3] c_quat[4]\n' % (output_freq , outputfile_name))
+                out.write('dump_modify quatt sort id\n')
+                out.write('fix 6 all print ${efreq} "$(step)  ekin = ${ekin} |  erot = ${erot} | epot = ${epot} | etot = ${etot}" file %s\n' % outputenergy_name )
+                out.write('\n')      
+                out.write('reset_timestep 0\n')     
+                out.write('run %d\n'% time)
+                out.write('run %d\n'% time)
+                out.write('run %d\n'% time)
+                out.write('run %d\n'% time)
+                out.write('\n')
+                out.write('\n')
+                out.write('\n')
+    
+            out.close()
+            
+    
+        print('generate %d infile done' %num_file)
+
 
 class Dna_array_system():
     num = 0
@@ -1041,6 +1278,53 @@ class Dna_array_system():
         del system
 
         Lammps_in_file.in_file_generate_with_relax_8type_fixwall(in_file_name = 'in.lk'  ,num_file = infile_n,read_file_name= 'probe8type.data',T = 300,salt = 0.5,n_probe=self._probe_n,n_target=self._target_n,bplen=self._bp_len,surface_density=self.surface_density,target_density=self.target_concentration,runflag=runflag,path=fold_path)
+        
+        print(f'path :{fold_path} done !')
+        print(f'It is the {Dna_array_system.num}th fold!')
+        print('-----------------------------------------')
+
+class Dna_array_system_probe():
+    num = 0
+    sigma = 0.8518 # nm
+    N_A = 6.023
+    def __init__(self,box_size,seq=None, probe_sq_n = 6,infile_n = 1,runflag = True, zmax = 20, fold_name = '1',bool_double=False) -> None:
+        Dna_array_system.num += 1
+        self._box = np.array([-box_size,box_size,-box_size,box_size,-1,zmax+1],dtype=np.float64)
+        self._seq = base.to_seq(sequence=seq)
+        self._bp_len = len(self._seq)
+        self._probe_sq_n = probe_sq_n
+        self._probe_n = self._probe_sq_n *self._probe_sq_n
+        if bool_double:
+            self._target_n = self._probe_n
+        else:
+            self._target_n = 0
+        # suface_density unit nm^-2
+        self.surface_density = self._probe_sq_n**2/(4*box_size*box_size*Dna_array_system.sigma*Dna_array_system.sigma)
+        # target_concentration unit mu M
+        v_box = zmax*4*box_size*box_size*Dna_array_system.sigma*Dna_array_system.sigma*Dna_array_system.sigma # nm^3
+        N_A = 6.023
+        target_concentration = self._target_n/v_box/N_A*10000 #mol/m^3
+        self.target_concentration = target_concentration * 1000 # mu M
+        #the zpos of target array
+        self._z_tem_wall = int(base.BASE_BASE*self._bp_len+0.5)+1
+        system = StrandGenerator.gen_probe_array(self._box,self._probe_sq_n,seq=seq,bool_double=bool_double)
+        cwd = os.getcwd()
+        fold_path = os.path.join(cwd,str(fold_name))
+        try:
+            os.makedirs(fold_path)
+        except:
+            print(f'path :{fold_path} already have ')
+
+        system.get_lammps_data_file("probe4type.data", "top.data",path = fold_path)
+        path = os.path.join(fold_path,'probe4type_ovt.data')
+        with open(path,'w+') as f:
+            f.write(system.lammps_output)
+        print('-----lammps generated done!')
+
+        system.get_system_graph()
+        del system
+
+        Lammps_in_file.in_file_generate_with_relax_4type_fixwall(in_file_name = 'in.lk'  ,num_file = infile_n,read_file_name= 'probe4type.data',T = 300,salt = 0.5,n_probe=self._probe_n,n_target=self._target_n,bplen=self._bp_len,surface_density=self.surface_density,target_density=self.target_concentration,runflag=runflag,path=fold_path)
         
         print(f'path :{fold_path} done !')
         print(f'It is the {Dna_array_system.num}th fold!')
@@ -1150,35 +1434,22 @@ def dnaarray():
     srepeat=['AAAAAAAAAAAAAAAAAAAA',
     'ACACACACACACACACACAC',
     'CCCCCCCCCCCCCCCCCCCC']
-    boxsize = [9,15,30,60]#,12,9]
+    boxsize = [9,15,30,45,60]#,12,9]
     # for i in range(3):
     #     for j in boxsize:
     #         Dna_array_system(box_size = j,seq=srepeat[i][::-1],infile_n=20,runflag=True,fold_name=j*100+i)
 
-    for i in [2]:
-        for j in[30]:
-            for k in [3,10,20]:
-                Dna_array_system(box_size = j,probe_sq_n=k,seq=srepeat[i][::-1],infile_n=20,runflag=True,fold_name=(j*100+i)*100+k)    
-    # double = StrandGenerator()
-    # s = base.System([-200,200,-200,200,-200,200])
-    # pwd = os.getcwd() 
-    # filename = 'single.data'
-    
-    # # open file
-    # w = base.File_system(pwd,filename)
-    # seq = 'C' * 336
-    # success = s.add_strands(double.generate(len(seq), sequence=seq, double=True, circular=False, DELTA_LK=4), check_overlap=False)
-    # s.update_probe_target_system(probe_mol= 1)
+    # for i in [2]:
+    #     for j in[30]:
+    #         for k in [3,10,20]:
+    #             Dna_array_system(box_size = j,probe_sq_n=k,seq=srepeat[i][::-1],infile_n=20,runflag=True,fold_name=(j*100+i)*100+k)    
 
-    # s.get_lammps_data_file()
+    for i in range(3):
+        for j in boxsize:
+            Dna_array_system_probe(box_size = j,seq=srepeat[i][::-1],infile_n=4,runflag=True,fold_name=f'{j*100+i}_p')
+            Dna_array_system_probe(box_size = j,seq=srepeat[i][::-1],infile_n=4,runflag=True,fold_name=f'{j*100+i}_dp',bool_double=True)
 
-    # s.get_hb_pair(mode = 'all')
 
-    # with open('probe8type_ovt.data','w+') as f:
-    #     f.write(s.lammps_output)
-    # print('-----lammps generated done!')
-    # del w
-    # del s
     pass
 
 def supercoiling():
@@ -1213,16 +1484,31 @@ def dnabreak():
     seq = 'A' * 336
     rot = 45
     len_l = 2
-    for i in range(35,36,1):
-        Dna_break_endsfixed_pre(box_size=200,seq=seq,delta_lk=i-32,infile_n=4,breakflag=True,fold_name=f'break_pre_lk_{i}_l_{len_l}r_{rot}',fixed_len=1,v1_l=len_l,rotate=rot)
-        DNA_break_endsfixed(box_size=200,seq=seq,r=5,dump=2.5,v1_l=len_l,rotate=rot,infile_n=32,fold_name=f'break_lk_{i}_l_{len_l}r_{rot}',fixed_len=1)
-        break
+    r = 5
+    lk = 35
+    # for lk in range(36,38,1):
+    #     for rot in [54,72]:
+    #         Dna_break_endsfixed_pre(box_size=200,seq=seq,delta_lk=lk-32,infile_n=4,breakflag=True,fold_name=f'break_pre_lk_{lk}_l_{len_l}r_{rot}',fixed_len=1,v1_l=len_l,rotate=rot)
+    #         for r in [6,7]:
+    #             DNA_break_endsfixed(box_size=200,seq=seq,r=r,dump=2.5,v1_l=len_l,rotate=rot,infile_n=32,fold_name=f'break_lk_{lk}_l_{r}r_{rot}',fixed_len=1)
+    
+    len_l = 0.5
+    for lk in [28]:
+        for rot in [0]:
+            Dna_break_endsfixed_pre(box_size=200,seq=seq,delta_lk=lk-32,infile_n=4,breakflag=True,fold_name=f'break_pre_lk_{lk}_l_{len_l}r_{rot}',fixed_len=1,v1_l=len_l,rotate=rot)
+            for r in [3,4,5,6,7,8]:
+                DNA_break_endsfixed(box_size=200,seq=seq,r=r,dump=2.5,v1_l=len_l,rotate=rot,infile_n=32,fold_name=f'break_lk_{lk}_l_{r}r_{rot}',fixed_len=1)
+
+
+
+
 if __name__ == "__main__":
-#    dnaarray()
+    dnaarray()
     # supercoiling()
-    dnabreak()
+    # dnabreak()
 #######################supercoiling in file just relax ###########dump = 1.0 for supercoling ,2.5 for hybrid ,78.9375 for sampling
     # Lammps_in_file.in_file_generate_21(in_file_name = 'in.lk' ,read_file_name= 'single.data',num_file = 20,T = 300)
 
+    # 
 
     pass

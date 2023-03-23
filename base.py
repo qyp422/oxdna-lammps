@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-02-20 14:58:49
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-15 10:32:01
+LastEditTime: 2023-03-23 15:29:37
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -1498,19 +1498,21 @@ class Plot_system():
             datas = []
             for f in file_names:
                 try:
-                    datas += np.array(pd.read_csv(f,header=None,sep='\s+'),dtype=int).tolist()[-1][(probe_mol+1):]
+                    datas += np.array(pd.read_csv(f,header=None,sep='\s+'),dtype=int)[-500:,(probe_mol+1):].ravel().tolist()
                 except:
                     exit('cannot find the file')
-            # import collections
-            # c = collections.Counter(datas)
+            import collections
+            c = collections.Counter(datas)
             # kde = gaussian_kde(datas)
             # plt.plot(x,kde(x),linewidth =lw)
-            # x = [0,1,2,3,4,5]
-            # y = [c[i]/36 for i in x]
-
+            x = [0,1,2,3,4,5]
+            y = np.zeros((6,),dtype=np.int64)
+            for i in x:
+                y[i] = c[i]
             # plt.plot(x,y,linewidth =lw)
             plt.hist(datas,bins=6,range=(-0.5,5.5),density=True,color='r',align='mid',rwidth=0.5)
-            np.savetxt('hb_kde_ave.txt',np.array(datas),fmt='%d',delimiter = ' ')
+            np.savetxt('hb_kde_count.txt',np.array(y),fmt='%d',delimiter = ' ',newline=' ')
+            np.savetxt('hb_kde_ave.txt',np.array(datas),fmt='%d',delimiter = ' ',newline=' ')
 
             
         plt.xlim(xmin,xmax)
@@ -1922,10 +1924,11 @@ class File_system(Plot_system):
 
 # for text
 if __name__ == "__main__":
-    flag = 1
-    filename_hb = [f'original_T_300_{i}.lammpstrj_hb.data' for i in range(20) ]
-    filename_kde = [f'original_T_300_{i}.lammpstrj_kde.data' for i in range(20) ]
-    filename_hb_mol = [f'original_T_300_{i}.lammpstrj_hb_single_mol.data' for i in range(1)]
+    flag = 0# True for every fold else for single file
+    num_names = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    filename_hb = [f'original_T_300_{i}.lammpstrj_hb.data' for i in num_names ]
+    filename_kde = [f'original_T_300_{i}.lammpstrj_kde.data' for i in num_names ]
+    filename_hb_mol = [f'original_T_300_{i}.lammpstrj_hb_single_mol.data' for i in num_names]
     if flag :
         import dumpreader as dr
 
@@ -1940,22 +1943,23 @@ if __name__ == "__main__":
             probe_mol = int(para_dict['probe_mol'])
 
         Plot_system.hb_mol_kde_plots(file_names=filename_hb_mol,out_file_name='hb_kde_ave.png',singleflag=False,probe_mol=probe_mol)
-        exit('1')
         Plot_system.hb_plots(file_names=filename_hb,out_file_name='ave.png')
         Plot_system.kde_plots(file_names=filename_kde,singleflag=False)
 
     else:
+        r0 = [900,1500,3000,6000]
         r1 = [901,1501,3001,6001]#,
         r2 = [902,1502,3002,6002]
+        r3 = [300220,300210,3002,300203]
+        l0 = ['3-aa','5-aa','10-aa','20-aa']
         l1 = ['3-ac','5-ac','10-ac','20-ac']#,
         l2 = ['3-cc','5-cc','10-cc','20-cc']
-        r = r1
-        l = l1
+        l3 = ['3-ccp','5-ccp','10-ccp','20-ccp']
+
+        r = r3
+        l = l3
         h = [f'hb{m}.txt' for m in r]
         k = [f'kde{m}.txt' for m in r]
-
-
-
         Plot_system.hb_plots(file_names=h,out_file_name='hb_main.png',singleflag=True,label=l)
         Plot_system.kde_plots(file_names=k,out_file_name='kde_main.png',singleflag=True,label=l)
     
