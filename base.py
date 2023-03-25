@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-02-20 14:58:49
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-23 15:29:37
+LastEditTime: 2023-03-24 14:24:00
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -157,6 +157,11 @@ class Nucleotide():
         return self.cm_pos + self._a1 * POS_BASE
 
     pos_base = property(get_pos_base)
+
+    def get_center_ds(self):
+        return self.cm_pos + self._a1 * CM_CENTER_DS
+
+    pos_center_ds = property(get_center_ds)
 
     def get_pos_stack (self):
         return self.cm_pos + self._a1 * POS_STACK
@@ -613,7 +618,6 @@ class System():
         # i = 2 z
         # x = [n.cm_pos[i]  for n in self._nucleotides if (n.index >= self.probe_n)]
         # y = [n.cm_pos[i]  for n in self._nucleotides if (n.index < self.probe_n)]
-        
         return [n.cm_pos[i]  for n in self._nucleotides]
             
             

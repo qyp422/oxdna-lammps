@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-09-22 15:40:48
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-02-18 17:10:54
+LastEditTime: 2023-03-25 19:30:52
 FilePath: \dump\oxdnaenergy\mathfuction.py
 Description: 
 Rotation matrix and Quaternion and eulerAngles
@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import math
 from scipy.spatial.transform import Rotation 
 plt.rc('font', family = 'Arial',size = 18)
+from scipy.stats import gaussian_kde
+
 
 
 import base
@@ -609,7 +611,6 @@ def get_sayar_writhe(splines1, smin, smax, splines2 = False, npoints = 1000, deb
     return writhe
 
 def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=30,missbarry=10):
-    import copy
     k,q = contact.shape
     looptop = {}    #key looptop value dict (key:(start,end),value,bandlen)
     bandlen = {}    #key bandlen value looptop
@@ -641,14 +642,15 @@ def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=30,missbarry=10):
                 else:
                     bandlen[band[kk]] = [i]
                 maxbandlen = max(maxbandlen,band[kk])
-                
-            looptop[i] = copy.copy(band)
+            looptop[i] = dict(band)
     
 
     for kk in looptop:
-        print(looptop[kk])
+        print(kk,looptop[kk])
     print(maxbandlen)
     print(bandlen[maxbandlen])
+    mes = f'{maxbandlen} {bandlen[maxbandlen]}\n'
+    return mes
 
 
 
@@ -687,4 +689,185 @@ def get_loacl_twist(strand1,strand2,circle=False):
 
     return local_twist
 
+@njit
+def cal_cm_rg(pos_old,l_box,mass):
+    n = len(pos_old)
+    cm0 = pos_old[0].copy() #幸运粒子
+    cm = np.zeros(3,dtype=np.double)
+    pos = np.zeros((n,3),dtype=np.double)
+    total_mass = np.sum(mass)
+    for i in range(n):
+        pos[i] = pos_old[i].copy()
+        dr = pos[i]-cm0
+        pos[i] -= l_box * np.rint (dr / l_box) #pos 距离cm0为盒子一半以内
+        cm += pos[i]*mass[i]
+    cm /= total_mass
 
+    rg_sq = np.zeros(3,dtype=np.double)
+    for i in range(n):
+        rg_sq += (pos[i] - cm)*(pos[i] - cm)*mass[i]
+    rg_sq /= total_mass
+
+    return cm,rg_sq
+
+
+def get_centerline(strand1,strand2=False,double_mode = False,l_box=False):
+    n = len(strand1._nucleotides)
+    centerline = np.zeros((n,3),dtype=np.double)
+    if double_mode:
+        try:
+            for i in range(n):
+                dr = strand1._nucleotides[i].cm_pos - strand2._nucleotides[n-1-i].cm_pos
+                centerline[i] = (strand1._nucleotides[i].cm_pos - l_box * np.rint (dr / l_box) + strand2._nucleotides[n-1-i].cm_pos)/2
+        except:
+            print('strand2 or l_box not set')
+            return False
+        return centerline
+    if strand2:
+        for i in range(n):
+            centerline[i] = strand1._nucleotides[i].pos_center_ds
+    else:
+        for i in range(n):
+            centerline[i] = strand1._nucleotides[i].pos_back
+    return centerline
+
+
+def get_rgr_rgz(strand1,strand2=False,double_mode = False,l_box=False):
+    _,rg_sq = cal_cm_rg(get_centerline(strand1,strand2,double_mode,l_box),l_box,mass=np.ones(strand1._n,dtype=int))
+    rgr = math.sqrt(rg_sq[0]+rg_sq[1])
+    rgz = math.sqrt(rg_sq[2])
+#    rg = math.sqrt(rg_sq[0]+rg_sq[1]+rg_sq[2])
+    return rgr ,rgz
+
+def kde_2d(x, y, bandwidth=0.2, xbins=300, ybins=300, xmin=None, xmax=None, ymin=None, ymax=None, **kwargs):
+    """
+    计算二维KDE
+
+    Parameters:
+        x (numpy.ndarray): 输入数据的x坐标，一个一维数组
+        y (numpy.ndarray): 输入数据的y坐标，一个一维数组
+        bandwidth (float): 核函数的带宽参数
+        xbins (int): x轴的bin数目
+        ybins (int): y轴的bin数目
+        xmin (float): x轴的最小值，如果为None，则默认为x中的最小值
+        xmax (float): x轴的最大值，如果为None，则默认为x中的最大值
+        ymin (float): y轴的最小值，如果为None，则默认为y中的最小值
+        ymax (float): y轴的最大值，如果为None，则默认为y中的最大值
+        **kwargs: 其他参数，用于传递给`gaussian_kde`函数
+
+    Returns:
+        grid (numpy.ndarray): 二维KDE的估计值，一个xbins x ybins的二维数组
+        xedges (numpy.ndarray): x轴的bin边界，一个长度为xbins+1的一维数组
+        yedges (numpy.ndarray): y轴的bin边界，一个长度为ybins+1的一维数组
+    """
+    # 将输入数据转换为一个二维矩阵
+    data = np.vstack([x, y])
+    # 计算x轴和y轴的bin边界
+    if xmin is None:
+        xmin = x.min()
+    if xmax is None:
+        xmax = x.max()
+    if ymin is None:
+        ymin = y.min()
+    if ymax is None:
+        ymax = y.max()
+    xedges = np.linspace(xmin, xmax, xbins + 1)
+    yedges = np.linspace(ymin, ymax, ybins + 1)
+
+    # 构造一个二维网格，用于计算KDE
+    xx, yy = np.meshgrid(xedges, yedges)
+    xy_grid = np.vstack([xx.ravel(), yy.ravel()])
+
+    # 计算二维KDE的估计值
+    # kde = gaussian_kde(data, bw_method=bandwidth, **kwargs)
+    kde = gaussian_kde(data, **kwargs)
+    z = kde(xy_grid)
+    # z = z / (z.sum() * np.diff(xy_grid[:2]).prod())
+    grid = z.reshape(xx.shape)
+    return grid, xedges, yedges
+
+
+
+def kde_1d(x, bandwidth=0.2, num_points=1000, xmin=None, xmax=None, **kwargs):
+    """
+    计算一维KDE
+
+    Parameters:
+        x (numpy.ndarray): 输入数据，一个一维数组
+        bandwidth (float): 核函数的带宽参数
+        num_points (int): 估计KDE时使用的点的数量
+        xmin (float): x轴的最小值，如果为None，则默认为x中的最小值
+        xmax (float): x轴的最大值，如果为None，则默认为x中的最大值
+        **kwargs: 其他参数，用于传递给`gaussian_kde`函数
+
+    Returns:
+        x_values (numpy.ndarray): 估计的x轴的值，一个一维数组
+        kde_values (numpy.ndarray): 估计的KDE函数值，一个一维数组
+    """
+    # 计算x轴的取值范围
+    if xmin is None:
+        xmin = x.min()
+    if xmax is None:
+        xmax = x.max()
+    x_values = np.linspace(xmin, xmax, num_points+1)
+
+    # 计算KDE函数
+    kde = gaussian_kde(x, **kwargs)
+    kde_values = kde(x_values)
+
+    return x_values, kde_values
+
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+
+def kde_sklearn(x, kernel='gaussian', grid_points=1000, xmin=None, xmax=None,cv=5):
+    """Calculate the kernel density estimate of a 1D array of data using Scikit-learn.
+
+    Args:
+        x (array-like): 1D array of data to compute KDE for.
+        kernel (str, optional): The kernel function to use. Must be one of ['gaussian', 'tophat', 'epanechnikov', 
+                                 'exponential', 'linear', 'cosine']. Defaults to 'gaussian'.
+        grid_points (int, optional): The number of points to use in the grid for evaluating the KDE. Defaults to 1000.
+        cv (int, optional): The number of cross-validation folds to use when performing the grid search for 
+                            bandwidth selection. Defaults to 5.
+
+    Returns:
+        tuple: A tuple containing the x and y values of the KDE curve.
+    """
+    # Define the kernel density estimator
+    kde = KernelDensity(kernel=kernel)
+
+    # Define the parameter grid to search over
+    param_grid = {'bandwidth': np.logspace(-1, 1, 20)}
+
+    # Perform the grid search to find the optimal bandwidth
+    grid_search = GridSearchCV(kde, param_grid=param_grid, cv=cv)
+    grid_search.fit(x[:, np.newaxis])
+    bandwidth = grid_search.best_params_['bandwidth']
+
+    # Fit the KDE with the optimal bandwidth
+    kde = KernelDensity(bandwidth=bandwidth, kernel=kernel)
+    kde.fit(x[:, np.newaxis])
+
+    # Evaluate the KDE on a grid of points
+        # 计算x轴的取值范围
+    if xmin is None:
+        xmin = x.min()
+    if xmax is None:
+        xmax = x.max()
+    x_grid = np.linspace(xmin, xmax, grid_points+1)
+    log_prob = kde.score_samples(x_grid[:, np.newaxis])
+    y = np.exp(log_prob)
+
+    return x_grid, y
+
+
+if __name__ == "__main__":
+    n= 20
+    pos = np.arange(0.0,20*0.34-0.1,0.34)
+    pos = np.array([[i,0,0] for i in pos])
+    print(pos)
+    l_box = np.array([300,300,300])
+    mass = np.ones(n,dtype=int)
+    cm,rg = cal_cm_rg(pos,l_box,mass)
+    print(cm,rg)
