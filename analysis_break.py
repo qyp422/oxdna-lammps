@@ -53,9 +53,10 @@ def main():
 
             #w.add_rg_message(t,r._system.rgrsq)
             
-            #math
-            # data = r._system.get_contactmap(r._system._strands[0],r._system._strands[1])
-            # ww.write(mf.get_supercoiling_shape(data))
+            #band_area
+            data = r._system.get_contactmap(r._system._strands[0],r._system._strands[1])
+            
+            w.add_band_area(t,mf.get_supercoiling_band(data))
 
             #hb
 

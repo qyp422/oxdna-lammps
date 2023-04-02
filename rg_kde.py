@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-03-23 20:46:00
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-25 17:29:04
+LastEditTime: 2023-03-26 17:30:50
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -97,7 +97,7 @@ def main(argv_name,argv_top,lk_n=False):
     
 if __name__ == "__main__":
     start=datetime.datetime.now()
-    num_names = [0,1,2]
+    num_names = [0,1,2,3]
     filenames = [f'original_T_300_{i}.lammpstrj' for i in num_names ]
 
     current_dir = os.getcwd()
@@ -121,11 +121,11 @@ if __name__ == "__main__":
 
 
 
-    pcm = ax.pcolormesh(xedges, yedges, kde, cmap=plt.cm.gist_earth_r,vmin=0,vmax=8)
+    pcm = ax.pcolormesh(xedges, yedges, kde, cmap=plt.cm.gist_earth_r,vmin=0,vmax=1)
     fig.colorbar(pcm, ax=ax)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
-    plt.savefig(f'{folder_name}_rg_rz.pdf',dpi=300)
+    plt.savefig(f'{folder_name}_rg_rz_1.pdf',dpi=300)
     plt.close()
     print('end plot')
     print('start plot')
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     z_mean = np.mean(pos_z_array)
     
     # 打开文件
-    with open(f'{folder_name}_mean.txt', 'w') as file:
+    with open(f'{folder_name}_mean_rg.txt', 'w') as file:
     # 写入数据
         file.write(f'rg_r = {rg_r}\n')
         file.write(f'rg_z = {rg_z}\n')

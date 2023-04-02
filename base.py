@@ -1,19 +1,9 @@
 '''
 Author: qyp422
-Date: 2023-02-20 14:58:49
-Email: qyp422@qq.com
-LastEditors: Please set LastEditors
-LastEditTime: 2023-03-24 14:24:00
-Description: 
-
-Copyright (c) 2023 by qyp422, All Rights Reserved. 
-'''
-'''
-Author: qyp422
 Date: 2022-10-13 16:21:26
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-02-20 10:01:50
+LastEditTime: 2023-04-02 17:36:17
 Description: system meassage
 
 Copyright (c) 2022 by qyp422, All Rights Reserved. 
@@ -750,6 +740,7 @@ class System():
                     distance[i][j] = np.linalg.norm(center_line[i]-center_line[j])
                 elif i > j:
                     distance[i][j] = distance[j][i]
+        # np.savetxt('a.txt',np.rint(distance),fmt='%d')
         return distance
 
 
@@ -1720,6 +1711,38 @@ class Plot_system():
         plt.savefig(filename+'.jpg',dpi=300)
         plt.close()
 
+    @classmethod
+    def plot_band_area(self,filename):
+        fonttitle = {'family':'Arial','weight':'normal','size':24}
+        plt.figure(4,figsize=(8, 6), dpi=300)
+        plt.rcParams['xtick.direction'] = 'in'
+        plt.rcParams['ytick.direction'] = 'in'
+    ###########################################################################################
+        plt.subplots_adjust(left=0.1,bottom=0.15,right=0.9,top=0.91,wspace=0.3,hspace=0.2)    
+        data = np.array(pd.read_csv(filename,header= None,sep=' '))
+        y,x= data.shape
+        data = data[:,1:]
+        clist=['lightcyan','lightcoral']
+
+        c = mpl.colors.LinearSegmentedColormap.from_list('qyp',clist)
+        xx = np.linspace(0,y-1,y)
+        yy = np.linspace(1,x-1,x-1)
+        
+        xx,yy=np.meshgrid(xx,yy)
+        
+        im = plt.pcolormesh(xx,yy,data.T, cmap=c,vmin=0,vmax=1, shading='nearest')
+
+        plt.xlim(-0.5,y-0.5)
+        plt.ylim(0.5,x-0.5)
+        plt.xticks(np.linspace(0,y-1,3),['0','4000','8000'])
+        plt.xlabel('t '+'(100'+chr(964)+')',fonttitle,labelpad=0)
+        plt.yticks(np.linspace(1,x-1,6,dtype=int))
+
+        plt.ylabel('Relative bp id',fonttitle,labelpad=0)
+
+
+        plt.savefig(filename+'.jpg',dpi=300)
+        plt.close()
 
 class File_system(Plot_system):
     def __init__(self,pwd = os.getcwd() , filename = 'single.data'):
@@ -1739,6 +1762,8 @@ class File_system(Plot_system):
         self._nick_file = False
         self._local_twist = False
         self._lk = 32
+        self._band_file = False
+        self._band_percentage_flie = False
 
 
         
@@ -1830,6 +1855,14 @@ class File_system(Plot_system):
         if not self._kde_file:
             self._kde_file = open(os.path.join(self._pwd,str(self._filename)) + '_kde.data','w+')
         self._kde_file.write(f'{time} '+' '.join(str(round(x,6)) for x in message)+'\n')
+
+    def add_band_area(self,time : int ,message ):
+        if not self._band_file:
+            self._band_file = open(os.path.join(self._pwd,str(self._filename)) + '_band.data','w+')
+        if not self._band_percentage_flie:
+            self._band_percentage_flie = open(os.path.join(self._pwd,str(self._filename)) + '_band_percentage.data','w+')
+        self._band_file.write(f'{time} '+' '.join(str(i) for i in message) + '\n')
+        self._band_percentage_flie.write(f'{time} {np.sum(message)}\n')
 
     def add_nickheat(self,time,message):
         if not self._nick_file:
@@ -1923,9 +1956,21 @@ class File_system(Plot_system):
                 print('cannot plot _nick_system')
             print('nick file done!')
 
+        if self._band_file:
+            self._band_file.close()
+            try:
+                self.plot_band_area(os.path.join(self._pwd,str(self._filename)) + '_band.data')
+            except:
+                print('cannot plot _band!')
+            print('band file done!')
 
-
-
+        if self._band_percentage_flie:
+            self._band_percentage_flie.close()
+            try:
+                self.plot_system(os.path.join(self._pwd,str(self._filename)) + '_band_percentage.data')
+            except:
+                print('cannot plot _band_per!')
+            print('_band_percentage file done!')
 # for text
 if __name__ == "__main__":
     flag = 0# True for every fold else for single file

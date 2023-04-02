@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-09-22 15:40:48
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-25 19:30:52
+LastEditTime: 2023-04-02 15:03:33
 FilePath: \dump\oxdnaenergy\mathfuction.py
 Description: 
 Rotation matrix and Quaternion and eulerAngles
@@ -610,7 +610,7 @@ def get_sayar_writhe(splines1, smin, smax, splines2 = False, npoints = 1000, deb
 
     return writhe
 
-def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=30,missbarry=10):
+def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=25,missbarry=10):
     k,q = contact.shape
     looptop = {}    #key looptop value dict (key:(start,end),value,bandlen)
     bandlen = {}    #key bandlen value looptop
@@ -628,6 +628,7 @@ def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=30,missbarry=10):
                     loop += band_flag + 1                    
                 else:
                     if loop >= minbandbp:
+                        # print(loop)
                         band[(j-band_flag-loop,j-band_flag-1)] = loop
                     loop = 1
                 band_flag = 0
@@ -644,7 +645,6 @@ def get_supercoiling_shape(contact,cutoff=7.5,minbandbp=30,missbarry=10):
                 maxbandlen = max(maxbandlen,band[kk])
             looptop[i] = dict(band)
     
-
     for kk in looptop:
         print(kk,looptop[kk])
     print(maxbandlen)
@@ -861,13 +861,56 @@ def kde_sklearn(x, kernel='gaussian', grid_points=1000, xmin=None, xmax=None,cv=
 
     return x_grid, y
 
+@njit
+def get_supercoiling_band(contact,cutoff=7.5):
+    k,q = contact.shape
+    band_array = np.zeros(k,dtype=np.int32)
+    for i in range(29,k):
+        tem_array = np.zeros(k-i,dtype=np.int32)
+        temleft = 0
+        temright = i
+        for j in range(k-i):
+            if contact[j,i+j] < cutoff:
+                tem_array[j] = 1
+        temleft,temright  = find_longest_subarray(tem_array,2)
+        if 9 < (temright - temleft + 1) < 51:
+            band_array[temleft:temright+1] += 1
+            band_array[i+temleft:i+temright+1] += 1
+    
+    return np.where(band_array > 9.9, 1, 0)
+
+@njit
+def find_longest_subarray(arr, k):
+    n = len(arr)
+    left, right = 0, 0
+    zero_count = 0
+    max_len = 0
+    subarray_left, subarray_right = -1, -2
+    # sub_percentaget = 0
+    for i in range(n):
+        if arr[i] == 0:
+            zero_count += 1
+            continue
+        
+        if arr[i+1] == 0 or i == n-1:
+            right = i
+            while zero_count > k:
+                if arr[left] == 0:
+                    zero_count -= 1
+                left += 1
+            while arr[left] == 0:
+                zero_count -= 1
+                left += 1
+            if right - left + 1 > max_len:
+                max_len = right - left + 1
+                subarray_left, subarray_right = left, right
+                # sub_percentaget = max_len - zero_count
+    return subarray_left, subarray_right #, sub_percentaget
+
+
+                
 
 if __name__ == "__main__":
-    n= 20
-    pos = np.arange(0.0,20*0.34-0.1,0.34)
-    pos = np.array([[i,0,0] for i in pos])
-    print(pos)
-    l_box = np.array([300,300,300])
-    mass = np.ones(n,dtype=int)
-    cm,rg = cal_cm_rg(pos,l_box,mass)
-    print(cm,rg)
+    a = np.array([0,0,1,0,1,1,0,1,1,1,0,0,1,1,1,1,1,1,1,1])
+    l,r=find_longest_subarray(a,2)
+    print(l,r )
