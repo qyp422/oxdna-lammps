@@ -865,7 +865,7 @@ def kde_sklearn(x, kernel='gaussian', grid_points=1000, xmin=None, xmax=None,cv=
 def get_supercoiling_band(contact,cutoff=7.5):
     k,q = contact.shape
     band_array = np.zeros(k,dtype=np.int32)
-    for i in range(29,k):
+    for i in range(29,k-19):
         tem_array = np.zeros(k-i,dtype=np.int32)
         temleft = 0
         temright = i
@@ -877,7 +877,7 @@ def get_supercoiling_band(contact,cutoff=7.5):
             band_array[temleft:temright+1] += 1
             band_array[i+temleft:i+temright+1] += 1
     
-    return np.where(band_array > 9.9, 1, 0)
+    return np.where(band_array > 19.9, 1, 0)
 
 @njit
 def find_longest_subarray(arr, k):
