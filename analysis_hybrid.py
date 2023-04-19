@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-03-14 15:24:46
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-03-14 15:37:44
+LastEditTime: 2023-04-19 11:42:32
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -87,7 +87,7 @@ def main():
 
     r._system.get_system_graph(path=pwd,filename = filename)
 
-    w.add_kde_message(t,r._system.get_i_density_distribution(i = 2))
+    # w.add_kde_message(t,r._system.get_i_density_distribution(i = 2))
     
 
 
