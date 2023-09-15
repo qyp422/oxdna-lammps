@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-11-12 11:09:37
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-04-18 21:03:57
+LastEditTime: 2023-09-14 20:40:28
 Description: 
 
 Copyright (c) 2022 by qyp422, All Rights Reserved. 
@@ -418,7 +418,80 @@ class StrandGenerator():
         # print('-----lammps generated done!')
 
     @classmethod
-    def gen_probe_array(self,box,probe_array,seq='CC',neighbor=0,bool_double=False):
+    def gen_probe_target_2compose(self,box,probe_array,z_tem_wall,seq='CC',neighbor=0,seq_t=False,seq2='AA',seq2number=0):
+        seqlen = len(seq)
+        #target seq
+        seqt = [np.array([7-base.base_to_number[x] for x in seq]),np.array([7-base.base_to_number[y] for y in seq2])]
+        #probe seq
+        seqp = [seq,seq2]
+        s = base.System(np.array(box))
+        if isinstance(probe_array,int):
+            seq1number = probe_array*probe_array-seq2number
+            probe_array = [probe_array,probe_array]
+        arr = [0] * seq1number + [1] * seq2number
+        random.shuffle(arr)
+        # set Initial 
+        boxsize = s.l_box[:2]
+        bool_double = False
+        bool_circular = False
+        shift = boxsize/probe_array/2
+
+        pos_range_x = np.linspace(s._box[0]+shift[0],s._box[1]-shift[0],probe_array[0],endpoint=True)
+        pos_range_y = np.linspace(s._box[2]+shift[1],s._box[3]-shift[1],probe_array[1],endpoint=True)
+        # crate target
+        count = 0
+        if neighbor == 0:
+            for i in pos_range_x:
+                for j in pos_range_y:
+                    t_seq = seqp[arr[count]]
+                    s.add_strands(self.generate(len(t_seq), sequence=t_seq,start_pos=np.array([i,j,0]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+                    count += 1
+        # elif neighbor == 2:
+        #     for i in range(n_probe):
+        #         for j in range(n_probe):
+        #             if i % 2 == 0:
+        #                 s.add_strands(g.generate(len(seq), sequence=seq,start_pos=np.array([pos_range[i],pos_range[j],0]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+        #             else:
+        #                 s.add_strands(g.generate(len(seq), sequence=seq,start_pos=np.array([pos_range[i],pos_range[j],0]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+        #             print(pos_range[i],pos_range[j])
+        # elif neighbor == 4:
+        #     for i in range(n_probe):
+        #         for j in range(n_probe):
+        #             if (i+j) % 2 == 0:
+        #                 s.add_strands(g.generate(len(seq), sequence=seq,start_pos=np.array([pos_range[i],pos_range[j],0]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+        #             else:
+        #                 s.add_strands(g.generate(len(seq), sequence=seq,start_pos=np.array([pos_range[i],pos_range[j],0]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+        #             print(pos_range[i],pos_range[j])
+
+
+        # s.add_strands(g.generate_complementary_strand(s._strands[1]), check_overlap=False)
+
+        #create target
+        n_target = len(arr)
+        count = 0
+        l = int(np.sqrt(n_target-1))+1 # lenth of targets
+        if seq_t:
+            shift = boxsize/l/2
+            pos_range = np.linspace(s._box[0],s._box[1]-2*shift[0],l,endpoint=True)
+            z_tem_wall = 5
+        else:
+            shift = boxsize/l/2
+            pos_range = np.linspace(s._box[0]+shift[0],s._box[1]-shift[0],l,endpoint=True)
+        for i in range(n_target):
+            t_seq = seqt[arr[count]]
+            s.add_strands(self.generate(len(t_seq), sequence=t_seq,start_pos=np.array([pos_range[i//l],pos_range[i%l],z_tem_wall]), double=bool_double, circular=bool_circular, DELTA_LK=0), check_overlap=False)
+            count += 1
+
+        s.update_probe_target_system(probe_mol=probe_array[0]*probe_array[1])
+        return s
+        # s.get_lammps_data_file("probe8type.data", "top.data")
+        # with open('probe8type_ovt.data','w+') as f:
+        #     f.write(s.lammps_output)
+        # print('-----lammps generated done!')
+
+
+    @classmethod
+    def gen_probe_array(self,box,probe_array,seq='CC',neighbor=0,bool_double=False,spacer_len = 0):
         #probe seq
         seqp = seq
         s = base.System(np.array(box))
@@ -440,7 +513,7 @@ class StrandGenerator():
 
         if bool_double:
             for i in range(probe_array[0]*probe_array[1]):
-                s.add_strands(self.generate_complementary_strand(s._strands[i]), check_overlap=False)
+                s.add_strands(self.generate_complementary_strand(s._strands[i],ds_start=spacer_len), check_overlap=False)
 
         
         s.update_probe_target_system(probe_mol=probe_array[0]*probe_array[1])
@@ -451,9 +524,9 @@ class StrandGenerator():
         # print('-----lammps generated done!')
 
     @classmethod
-    def generate_complementary_strand(self,ns1): #generate complementary strand of ns1
+    def generate_complementary_strand(self,ns1,ds_start=0): #generate complementary strand of ns1
         ns2 = base.Strand()
-        ds_start = 0
+        # ds_start = 0 # start to gen
         ds_end = len(ns1._sequence)
         # print(ns1._sequence)
         # print(ds_end)
@@ -471,6 +544,11 @@ class StrandGenerator():
 class Lammps_in_file():
     @classmethod
     def in_file_generate_with_relax_8type_fixwall(self,in_file_name,read_file_name,dimension = 3, num_file = 1,T = 300,seq = 'seqdep',salt = 0.2,damp = 2.5,timestep = 0.005,time = 100000000,n_probe=36,n_target=1,bplen=30,surface_density=-1,target_density=-1,runflag=True,path=os.getcwd(),total=False):
+        # deal read file name
+        if isinstance(read_file_name,str):
+            read_file_name = [read_file_name]*num_file
+        if len(read_file_name) != num_file:
+            exit('num_file must same as len of read_file_name or 1')
         # all the probe is type  
         t_relaxation = 10**5 
         t_r = 10**7 # for oxdna relaxation of inital stucture t should be o(10^6) 
@@ -558,7 +636,7 @@ class Lammps_in_file():
             out.write('neighbor %s\n'% neighbor_style_dict[neighbor_style])
             out.write('neigh_modify every 1 delay 0 check yes\n')
             out.write('\n')
-            out.write('read_data %s\n'% read_file_name)
+            out.write('read_data %s\n'% read_file_name[i])
             out.write('set atom * mass 3.1575\n')
             out.write('\n')
             out.write('group all type 1 2 3 4 5 6 7 8\n')
@@ -1063,7 +1141,7 @@ class Lammps_in_file():
         print(f'lammps infile done! total {num_file} files\n')
 
     @classmethod
-    def in_file_generate_with_relax_4type_fixwall(self,in_file_name,read_file_name,dimension = 3, num_file = 1,T = 300,seq = 'seqdep',salt = 0.2,damp = 2.5,timestep = 0.005,time = 100000000,n_probe=36,n_target=1,bplen=30,surface_density=-1,target_density=-1,runflag=True,path=os.getcwd()):
+    def in_file_generate_with_relax_4type_fixwall(self,in_file_name,read_file_name,dimension = 3, num_file = 1,T = 300,seq = 'seqdep',salt = 0.2,damp = 2.5,timestep = 0.005,time = 100000000,n_probe=36,n_target=1,bplen=30,surface_density=-1,target_density=-1,runflag=True,path=os.getcwd(),total = False):
         # all the probe is type  
         t_relaxation = 10**5 
         t_r = 10**7 # for oxdna relaxation of inital stucture t should be o(10^6) 
@@ -1114,7 +1192,10 @@ class Lammps_in_file():
         
         # add target id
         if n_target:
-            dnanve += str(k*bplen+1) + ':' + str(k*bplen+n_target*bplen)
+            if total:
+                dnanve += str(k*bplen+1) + ':' + str(total)
+            else:
+                dnanve += str(k*bplen+1) + ':' + str(k*bplen+n_target*bplen)
     
         # system
         ll = '# lammps in file with probe molecule %d with type 1 2 3 4\n'%(k)
@@ -1294,11 +1375,59 @@ class Dna_array_system():
         print(f'It is the {Dna_array_system.num}th fold!')
         print('-----------------------------------------')
 
+class Dna_array_system_2compose():
+    num = 0
+    sigma = 0.8518 # nm
+    N_A = 6.023
+    def __init__(self,box_size,seq=None, probe_sq_n = 6, target_n = 36,infile_n = 1,runflag = True, zmax = 20, fold_name = '1',seq_t=False,seq2=None,seq2number=0) -> None:
+        Dna_array_system_2compose.num += 1
+        self._box = np.array([-box_size,box_size,-box_size,box_size,-1,zmax+1],dtype=np.float64)
+        self._seq = base.to_seq(sequence=seq)
+        self._seq2 = base.to_seq(sequence=seq2)
+        self._bp_len = len(self._seq)
+        self._probe_sq_n = probe_sq_n
+        self._probe_n = self._probe_sq_n *self._probe_sq_n 
+        self._target_n = target_n
+        # suface_density unit nm^-2
+        self.surface_density = self._probe_sq_n**2/(4*box_size*box_size*Dna_array_system_2compose.sigma*Dna_array_system_2compose.sigma)
+        # target_concentration unit mu M
+        v_box = zmax*4*box_size*box_size*Dna_array_system_2compose.sigma*Dna_array_system_2compose.sigma*Dna_array_system_2compose.sigma # nm^3
+        N_A = 6.023
+        target_concentration = self._target_n/v_box/N_A*10000 #mol/m^3
+        self.target_concentration = target_concentration * 1000 # mu M
+        #the zpos of target array
+        self._z_tem_wall = int(base.BASE_BASE*self._bp_len+0.5)+1
+        cwd = os.getcwd()
+        fold_path = os.path.join(cwd,str(fold_name))
+        try:
+            os.makedirs(fold_path)
+        except:
+            print(f'path :{fold_path} already have ')
+        for i in range(infile_n):
+            system = StrandGenerator.gen_probe_target_2compose(self._box,self._probe_sq_n,self._z_tem_wall+1,seq=seq,seq_t=seq_t,seq2=seq2,seq2number=seq2number)
+            total = system._N
+
+
+            system.get_lammps_data_file(f'probe8type_{i}.data', f'top_{i}.data',path = fold_path)
+            path = os.path.join(fold_path,f'probe8type_ovt_{i}.data')
+            with open(path,'w+') as f:
+                f.write(system.lammps_output)
+            # print('-----lammps generated done!')
+
+            del system
+        data_file_array = [f'probe8type_{i}.data' for i in range(infile_n)]
+        Lammps_in_file.in_file_generate_with_relax_8type_fixwall(in_file_name = 'in.lk'  ,num_file = infile_n,read_file_name= data_file_array,T = 300,salt = 0.5,n_probe=self._probe_n,n_target=self._target_n,bplen=self._bp_len,surface_density=self.surface_density,target_density=self.target_concentration,runflag=runflag,path=fold_path,total=total)
+        
+        print(f'path :{fold_path} done !')
+        print(f'It is the {Dna_array_system_2compose.num}th fold!')
+        print('-----------------------------------------')
+
+
 class Dna_array_system_probe():
     num = 0
     sigma = 0.8518 # nm
     N_A = 6.023
-    def __init__(self,box_size,seq=None, probe_sq_n = 6,infile_n = 1,runflag = True, zmax = 20, fold_name = '1',bool_double=False) -> None:
+    def __init__(self,box_size,seq=None, probe_sq_n = 6,infile_n = 1,runflag = True, zmax = 20, fold_name = '1',bool_double=False,spacer_len=0) -> None:
         Dna_array_system.num += 1
         self._box = np.array([-box_size,box_size,-box_size,box_size,-1,zmax+1],dtype=np.float64)
         self._seq = base.to_seq(sequence=seq)
@@ -1318,7 +1447,7 @@ class Dna_array_system_probe():
         self.target_concentration = target_concentration * 1000 # mu M
         #the zpos of target array
         self._z_tem_wall = int(base.BASE_BASE*self._bp_len+0.5)+1
-        system = StrandGenerator.gen_probe_array(self._box,self._probe_sq_n,seq=seq,bool_double=bool_double)
+        system = StrandGenerator.gen_probe_array(self._box,self._probe_sq_n,seq=seq,bool_double=bool_double,spacer_len=spacer_len)
         cwd = os.getcwd()
         fold_path = os.path.join(cwd,str(fold_name))
         try:
@@ -1331,11 +1460,11 @@ class Dna_array_system_probe():
         with open(path,'w+') as f:
             f.write(system.lammps_output)
         print('-----lammps generated done!')
-
+        total = system._N
         system.get_system_graph()
         del system
 
-        Lammps_in_file.in_file_generate_with_relax_4type_fixwall(in_file_name = 'in.lk'  ,num_file = infile_n,read_file_name= 'probe4type.data',T = 300,salt = 0.5,n_probe=self._probe_n,n_target=self._target_n,bplen=self._bp_len,surface_density=self.surface_density,target_density=self.target_concentration,runflag=runflag,path=fold_path)
+        Lammps_in_file.in_file_generate_with_relax_4type_fixwall(in_file_name = 'in.lk'  ,num_file = infile_n,read_file_name= 'probe4type.data',T = 300,salt = 0.5,n_probe=self._probe_n,n_target=self._target_n,bplen=self._bp_len,surface_density=self.surface_density,target_density=self.target_concentration,runflag=runflag,path=fold_path,total=total)
         
         print(f'path :{fold_path} done !')
         print(f'It is the {Dna_array_system.num}th fold!')
@@ -1444,27 +1573,37 @@ class DNA_break_endsfixed():
 def dnaarray():
     srepeat=['AAAAAAAAAAAAAAAAAAAA',
     'ACACACACACACACACACAC',
-    'CCCCCCCCCCCCCCCCCCCC']
+    'CCCCCCCCCCCCCCCCCCCC',
+    'TTTTTTTTTTTTTTTTTTTT']
     sepscail = ['CCCCCCCCCCCCCCCCCCCC','GGGGGGGGGGGGGGGGGGGG']
+    srepeat10 = ['CCCCCCCCCC','AAAAAAAAAA','CCCCCCCCCCCCCCCCCCCCCCCCCCCCCC','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA']
+    tsrepeat10 = ['GGGGGGGGGG','TTTTTTTTTT','GGGGGGGGGGGGGGGGGGGGGGGGGGGGGG','TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT']
     boxsize = [9,18,30,45,60]#,12,9]
-    # for i in range(3):
-    #     for j in boxsize:
-    #         Dna_array_system(box_size = j,seq=srepeat[i][::-1],infile_n=20,runflag=True,fold_name=j*100+i)
-
-    # for i in [2]:
+    # for i in range(4):
     #     for j in [30]:
-    #         for k in [6]:
+    #         Dna_array_system(box_size = j,seq=srepeat10[i][::-1],infile_n=20,runflag=True,fold_name=j*100+i+90,seq_t=tsrepeat10[i][::-1])
+    for i in [9,18,27]:
+        for j in [30]:
+            Dna_array_system_2compose(box_size = j,seq=srepeat[2][::-1],infile_n=20,runflag=True,fold_name='mixed'+str(i),seq2=srepeat[0][::-1],seq2number=i)
+    # for i in [0]:
+    #     for j in [30]:
+    #         for k in [10]:
     #             Dna_array_system(box_size = j,probe_sq_n=k,seq=srepeat[i][::-1],infile_n=20,runflag=True,fold_name=(j*100+i)*100+k)    
 
-    # for i in range(3):
+    # for i in [3]:
     #     for j in [18]:#boxsize
     #         Dna_array_system_probe(box_size = j,seq=srepeat[i][::-1],infile_n=4,runflag=True,fold_name=f'{j*100+i}_p')
     #         Dna_array_system_probe(box_size = j,seq=srepeat[i][::-1],infile_n=4,runflag=True,fold_name=f'{j*100+i}_dp',bool_double=True)
 
-    for i in [5,10,15]:
-        for j in [30]:
-            for k in [6]:
-                Dna_array_system(box_size = j,probe_sq_n=k,seq='A'*i+sepscail[0],infile_n=20,runflag=True,fold_name=(j*100+i)*100+k,seq_t=sepscail[1])
+    # for i in [5,10,15]:
+    #     for j in [30]:
+    #         for k in [6]:
+    #             Dna_array_system(box_size = j,probe_sq_n=k,seq='A'*i+sepscail[0],infile_n=20,runflag=True,fold_name=(j*100+i)*100+k,seq_t=sepscail[1])
+
+    # for i in [5,10,15]:
+    #     for j in [30]:#boxsize
+    #         Dna_array_system_probe(box_size = j,seq='A'*i+sepscail[0],infile_n=4,runflag=True,fold_name=f'{j*100+i}_p')
+    #         Dna_array_system_probe(box_size = j,seq='A'*i+sepscail[0],infile_n=4,runflag=True,fold_name=f'{j*100+i}_dp',bool_double=True,spacer_len = i)
 
     pass
 

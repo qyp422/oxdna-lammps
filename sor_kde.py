@@ -61,11 +61,11 @@ def main(argv_name,argv_top,lk_n=False):
             for i in target_set:
                 for n in r._system._strands[i]._nucleotides:
                     if np.abs(n._a3[2])>1:
-                        sor_t.append(1.0)
-                        sor_t_d.append(np.degrees(np.arcsin(1)))
+                        sor_p.append(1.0)
+                        sor_p_d.append(np.degrees(np.arcsin(1)))
                     else:
-                        sor_t.append(1.5 * n._a3[2] * n._a3[2] - 0.5)
-                        sor_t_d.append(np.degrees(np.arcsin(np.abs(n._a3[2]))))
+                        sor_p.append(1.5 * n._a3[2] * n._a3[2] - 0.5)
+                        sor_p_d.append(np.degrees(np.arcsin(np.abs(n._a3[2]))))
                     pos_z.append(n.cm_pos[2])
             
 
@@ -105,7 +105,7 @@ def plot_1d(x,kde_v,folder_name,file_name):
 
 if __name__ == "__main__":
     start=datetime.datetime.now()
-    num_names = [0,1,2,3]
+    num_names = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
     filenames = [f'original_T_300_{i}.lammpstrj' for i in num_names ]
 
     current_dir = os.getcwd()
@@ -149,9 +149,12 @@ if __name__ == "__main__":
         file.write(f'mean_sor_p_d_array = {mean_sor_p_d_array}\n')
         file.write(f'mean_sor_t_d_array = {mean_sor_t_d_array}\n')
         file.write(f'z_mean = {z_mean}\n')
+        file.write(f'z_total = {len(pos_z_array)}\n')
+        file.write(f'file_total = {len(num_names)*501}\n')
 
     try:
         x, kde_v = mf.kde_1d(sor_p_array, num_points=1000, xmin=-1,xmax=1,bw_method=0.1)
+        np.savetxt(f'{folder_name}_sor_p_count.txt',kde_v,fmt='%.6f',newline=' ')
         plot_1d(x,kde_v,folder_name,file_name=f'sor_p_array')
     except:
         pass
@@ -164,6 +167,7 @@ if __name__ == "__main__":
 
     try:
         x, kde_v = mf.kde_1d(sor_p_d_array, num_points=1000, xmin=0,xmax=90,bw_method=0.1)
+        np.savetxt(f'{folder_name}_sor_p_d_count.txt',kde_v,fmt='%.6f',newline=' ')
         plot_1d(x,kde_v,folder_name,file_name=f'sor_p_d_array')
     except:
         pass
@@ -176,7 +180,11 @@ if __name__ == "__main__":
     
     try:
         x, kde_v = mf.kde_1d(pos_z_array, num_points=2000, xmin=0,xmax=20,bw_method=0.1)
-        plot_1d(x,kde_v,folder_name,file_name=f'pos_z_array')
+        np.savetxt(f'{folder_name}_pos_z_plot_x.txt',x,fmt='%.6f',newline=' ')
+        np.savetxt(f'{folder_name}_pos_z_plot.txt',kde_v,fmt='%.6f',newline=' ')
+        kde_c = kde_v*len(pos_z_array)/(len(num_names)*501)*20/2000
+        np.savetxt(f'{folder_name}_pos_z_plot_count.txt',kde_c,fmt='%.6f',newline=' ')
+        plot_1d(x,kde_c,folder_name,file_name=f'pos_z_array')
     except:
         pass
 

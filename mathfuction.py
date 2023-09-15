@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-09-22 15:40:48
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-04-02 15:03:33
+LastEditTime: 2023-05-02 13:37:21
 FilePath: \dump\oxdnaenergy\mathfuction.py
 Description: 
 Rotation matrix and Quaternion and eulerAngles
@@ -862,10 +862,10 @@ def kde_sklearn(x, kernel='gaussian', grid_points=1000, xmin=None, xmax=None,cv=
     return x_grid, y
 
 @njit
-def get_supercoiling_band(contact,cutoff=7.5):
+def get_supercoiling_band_text(contact,cutoff=7.5):
     k,q = contact.shape
     band_array = np.zeros(k,dtype=np.int32)
-    for i in range(29,k-19):
+    for i in range(19,k-19):
         tem_array = np.zeros(k-i,dtype=np.int32)
         temleft = 0
         temright = i
@@ -876,7 +876,19 @@ def get_supercoiling_band(contact,cutoff=7.5):
         if 9 < (temright - temleft + 1) < 51:
             band_array[temleft:temright+1] += 1
             band_array[i+temleft:i+temright+1] += 1
-    
+    print(band_array)
+    return np.where(band_array > 19.9, 1, 0)
+
+@njit
+def get_supercoiling_band(contact,cutoff=7.5):
+    k,q = contact.shape
+    band_array = np.zeros(k,dtype=np.int32)
+    for i in range(20,k-19):
+        for j in range(k-i):
+            if contact[j,i+j] < cutoff:
+                band_array[j] += 1
+                band_array[i+j] += 1
+    print(band_array)
     return np.where(band_array > 19.9, 1, 0)
 
 @njit
