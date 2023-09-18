@@ -766,7 +766,7 @@ class System():
                 last_register = tem_register
             else:
                 continue
-        print(register)
+#        print(register)
         if register_type == 2:
             # print(register,'7777777777777')
             return 7
