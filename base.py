@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-10-13 16:21:26
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-04-02 17:36:17
+LastEditTime: 2023-09-18 20:31:41
 Description: system meassage
 
 Copyright (c) 2022 by qyp422, All Rights Reserved. 
@@ -376,6 +376,8 @@ class System():
         # self._hb_probe_number = 0   #system probe number to be hb
         # self._hb_target_number = 0  #system target number to be hb
         self._hb_dict = {}          #system hb pair dict only _hb_dict[probe id] = target id
+        self._hb_energy = False     #system_hb_energy
+
         self.probe_mol = False      #strands number before probe_n is probe after is target
         self.target_mol = False     #*_mol is the strands number of *
         self.probe_n = False        #*_n is the nt number of *
@@ -543,6 +545,10 @@ class System():
         for s in self._strands:
             s.H_interactions = {}
             s.H_interaction_number = 0
+
+        # refresh the hb total_energy    
+        self._hb_energy = 0.0
+
         # start find hb bond
         hb_pair = {}
         if mode == 'search':
@@ -554,6 +560,7 @@ class System():
                 a = self._nucleotides[i]
                 b = self._nucleotides[j]
                 tem_hb_energy = hb.hb_energy(a.cm_pos,a._a1,a._a3,a._base,b.cm_pos,b._a1,b._a3,b._base,self.l_box) 
+                self._hb_energy += tem_hb_energy
                 if tem_hb_energy < H_CUTOFF:
                     hb_pair[i]=j
                     self._strands[self._nucleotide_to_strand[i]].add_H_interaction(self._nucleotide_to_strand[j])
@@ -568,6 +575,7 @@ class System():
                 for j in target_set:
                     b = self._nucleotides[j]
                     tem_hb_energy = hb.hb_energy(a.cm_pos,a._a1,a._a3,a._base,b.cm_pos,b._a1,b._a3,b._base,self.l_box) 
+                    self._hb_energy += tem_hb_energy
                     if tem_hb_energy < H_CUTOFF:
                         hb_pair[i]=j
                         self._strands[self._nucleotide_to_strand[i]].add_H_interaction(self._nucleotide_to_strand[j])
@@ -589,6 +597,7 @@ class System():
                         continue
                     b = self._nucleotides[j]
                     tem_hb_energy = hb.hb_energy(a.cm_pos,a._a1,a._a3,a._base,b.cm_pos,b._a1,b._a3,b._base,self.l_box) 
+                    self._hb_energy += tem_hb_energy
                     if tem_hb_energy < H_CUTOFF:
                         hb_pair[i]=j
                         twin_hb_pair[j] = i
@@ -600,7 +609,13 @@ class System():
                     target_set.discard(hb_pair[i])
 
         self._hb_dict = hb_pair
+        print(f'total hb_energy = {self._hb_energy}')
         print('updata _hb_dict done')
+
+    def get_total_hb_energy(self):
+        return self._hb_energy
+
+    total_hb_energy = property (get_total_hb_energy)
 
     def get_i_density_distribution(self,i = 2):
         # i = 0 x
@@ -650,7 +665,124 @@ class System():
         else:
             target_percentage = 0.0
         return [hb_number/self.probe_n , float(probe_mol_n)/self.probe_mol , float(target_mol_n)/self.target_mol , probe_percentage , target_percentage],hb_percentage_list.tolist(),hb_mol_number_list
-    
+
+    def decision_structure(self):
+        """
+        structure_array: array
+        0   free 
+        1   Type 1A perfectmatch    
+        2   Type 1B
+        3   Type 2A
+        4   Type 2B
+        5   Type 3
+        6   purely misaligned
+        7   pseudoknot structure
+        8   else
+        """
+        structure_array = [0,0,0,0,0,0,0,0,0]
+        target_search_set = set(range(self.probe_mol,self._N_strands))
+        
+        while len(target_search_set):
+            cluster,probes_count,total_degree,max_degree_of_target = self.cluster_dfs(target_search_set.pop())
+            target_search_set = target_search_set - cluster
+            # decide
+            if probes_count == 0:          # free
+                structure_array[0] += 1
+            elif max_degree_of_target > 2: # Type 3 
+                structure_array[5] += 1
+            elif probes_count == 1:
+                if len(cluster) == 2: # Type 1A or purely misaligned or pseudoknot structure
+                    structure_type = self.one_to_one_hybrid_type(cluster)
+                    structure_array[structure_type] += 1
+                
+                elif len(cluster) == 3: # Type 1B
+                    structure_array[2] += 1
+                else:
+                    structure_array[8] += 1
+                    print('1 probe error!')
+            elif probes_count > 1:
+                if total_degree == 2*len(cluster) -2 : # Type 2B
+                    structure_array[4] += 1
+                elif total_degree == 2*len(cluster): # Type 2A
+                    structure_array[3] += 1
+                else:
+                    structure_array[8] += 1
+                    print('2 or more probes error!')
+            else :
+                structure_array[8] += 1
+                print('probes number error!')
+        print(structure_array)
+        print('decision_structure done!')
+        return structure_array
+
+    def cluster_dfs(self,x):
+        visited = set()
+        total_degree = 0
+        max_degree_of_target = -1
+        probes_count = 0
+        wait_to_visit = set([x])
+        while len(wait_to_visit) > 0:
+            t_visit = wait_to_visit.pop()
+            visited.add(t_visit)
+            wait_to_visit.update(self._strands[t_visit].H_interactions.keys())
+            wait_to_visit = wait_to_visit - visited
+            
+            #update degree
+            t_visit_degree = len(self._strands[t_visit].H_interactions)
+
+            if t_visit < self.probe_mol:
+                probes_count += 1
+            else:
+                max_degree_of_target = max(max_degree_of_target,t_visit_degree)
+            # print(wait_to_visit,visited)
+
+            
+            total_degree += t_visit_degree
+        return visited,probes_count,total_degree,max_degree_of_target
+
+    def one_to_one_hybrid_type(self,cluster): #1or6or7or8
+        if isinstance(cluster,set):
+            cluster = list(cluster)
+        elif isinstance(cluster,int):
+            for j in self._strands[cluster].H_interactions:
+                cluster = [cluster,j]
+                break
+        cluster.sort()
+        s_probe = self._strands[cluster[0]]
+        s_target = self._strands[cluster[1]]
+        register = {}
+        last_register = s_probe._n * 2 + 2
+        register_type = 0
+        for i in range(s_probe._first,s_probe._last+1):
+            if i in self._hb_dict:
+                tem_register = s_target._last - self._hb_dict[i] - i + s_probe._first
+                if tem_register in register:
+                    register[tem_register] += 1
+                else:
+                    register[tem_register] = 1
+                # print(i,self._hb_dict[i],tem_register)
+                if abs(last_register - tem_register) > 2:
+                    register_type += 1
+                last_register = tem_register
+            else:
+                continue
+        print(register)
+        if register_type == 2:
+            # print(register,'7777777777777')
+            return 7
+        elif register_type == 1:
+            register_total = 0
+            register_number = 0
+            for i in register:
+                register_number += register[i]
+                register_total += register[i]*i
+            if abs(register_total) <= ((s_target._n+1) // 3 * register_number):
+                return 1
+            else:
+                # print(register,'66666666666666666')
+                return 6
+        # print(register,'88888888888888')
+        return 8
 # about supercoiling system
 
     @classmethod
@@ -1880,6 +2012,7 @@ class File_system(Plot_system):
         self._ovt_file = False
         self._sor_file = False
         self._rg_file = False
+        self._hb_total_energy_file = False
         self._hb_file = False
         self._hb_single_file = False
         self._hb_single_mol_file = False
@@ -1891,7 +2024,8 @@ class File_system(Plot_system):
         self._lk = 32
         self._band_file = False
         self._band_percentage_flie = False
-
+        self._array_structure_file = False
+        
 
         
     def plot_probe_system(self,file_name,v_max=1):
@@ -1949,6 +2083,11 @@ class File_system(Plot_system):
             
         self._rg_file.write(f'{time} '+' '.join(str(round(np.sqrt(sum(x)),6)) for x in message)+'\n')
 
+    def add_hb_energy(self,time : int , message):
+        if not self._hb_total_energy_file:
+            self._hb_total_energy_file = open(os.path.join(self._pwd,str(self._filename)+'_hb_total_energy.data'),'w+')
+        self._hb_total_energy_file.write(f'{time} ' + str(round(message,6)) + '\n')
+
     def add_hb_message(self,time : int , message):
         if not self._hb_file:
             self._hb_file = open(os.path.join(self._pwd,str(self._filename)+'_hb.data'),'w+')
@@ -1996,6 +2135,11 @@ class File_system(Plot_system):
             self._nick_file = open(os.path.join(self._pwd,str(self._filename)) + '_nick.data','w+')
         self._nick_file.write(f'{time} '+' '.join(str(x) for x in message)+'\n')
 
+    def add_array_structure(self,time : int ,message):
+        if not self._array_structure_file:
+            self._array_structure_file = open(os.path.join(self._pwd,str(self._filename)) + '_array_structure.data','w+')
+        self._array_structure_file.write(f'{time} '+' '.join(str(x) for x in message)+'\n')
+    
     # def string_file(self,filename,message):
     #     with open(filename,'w+') as f:
     #         f.write(message)
@@ -2004,6 +2148,8 @@ class File_system(Plot_system):
             self.plot_probe_system(os.path.join(self._pwd,str(self._filename)+'_hb_single_mol.data'),v_max=4)
         except:
             print('cannot plot hb number!')
+
+
 
 
     def __del__(self):
@@ -2023,6 +2169,13 @@ class File_system(Plot_system):
             self._rg_file.close()
             print('rg model done!')
         
+        if self._hb_total_energy_file:
+            self._hb_total_energy_file.close()
+            try:
+                self.plot_system(os.path.join(self._pwd,str(self._filename)+'_hb_total_energy.data'))
+            except:
+                print('_hb_total_energy_file!')
+
         if self._hb_file:
             self._hb_file.close()
             self._hb_single_file.close()
@@ -2098,6 +2251,12 @@ class File_system(Plot_system):
             except:
                 print('cannot plot _band_per!')
             print('_band_percentage file done!')
+        
+        if self._array_structure_file:
+            self._array_structure_file.close()
+
+
+            print('_array_structure file done!')
 # for text
 if __name__ == "__main__":
     flag = 0# True for every fold else for single file
