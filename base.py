@@ -1226,6 +1226,90 @@ class System():
         plt.savefig(path,dpi = 300)
         plt.close()
 
+    def get_system_last_graph_ovt(self,path = None,filename = ''):
+        # colorbar 
+        c_rainbow = plt.get_cmap('rainbow')
+        c_x = np.linspace(0,1,5)
+        c_list = [c_rainbow(i) for i in c_x]
+        qyp = mpl.colors.ListedColormap(c_list)
+        if path:
+            self.frame_path = path
+        if len(self._nucleotides) != self._N:
+            sys.exit(r'please use self.update_nucleotide_list updata self._nucleotides first\n' + f'{len(self._nucleotides)} {self._N}')
+        plt.figure(4,figsize=(8*2,6), dpi=300)
+        plt.subplot(121)
+        # note that must use after self.get_hb_pair()
+        nodesizemin = 50
+        nodesizelen = 500
+        G = nx.DiGraph()
+        G.add_nodes_from(range(1,self._N_strands+1))
+        
+        #position
+        probe_list = [x for x in range(1,self.probe_mol+1)]
+        target_list = [x for x in range(self.probe_mol+1,self._N_strands+1)]
+        pre_list = []
+        pos_probe = dict([(x.index+1,self._nucleotides[x._first].pos_back_xy) for x in self._strands[:self.probe_mol]])
+        pos_target = dict([(x.index+1,self._nucleotides[x._last].pos_back_xy) for x in self._strands[self.probe_mol:]])
+        pos = {}
+        pos.update(pos_probe)
+        pos.update(pos_target)
+        
+
+        hb_percentage_list_probe = np.array([float(s.H_interaction_number/s._n) for s in self._strands[:self.probe_mol]])
+        hb_mol_number_list_probe = [len(s.H_interactions) for s in self._strands[:self.probe_mol]]
+
+        hb_percentage_list_target = np.array([float(s.H_interaction_number/s._n) for s in self._strands[self.probe_mol:]])
+        hb_mol_number_list_target = [len(s.H_interactions) for s in self._strands[self.probe_mol:]]
+
+        weight = {}
+        # deal pre and add mirror
+        pos_mirror = {}
+        box = self.l_box[:2]
+        for i in self._strands[:self.probe_mol]:
+            i_pos =np.array(pos[i.index+1])
+            for j in i.H_interactions:
+                j_pos =np.array(pos[j+1])
+                diff = np.rint((j_pos-i_pos)/ box)
+                if np.all(diff == 0):
+                    G.add_edge(j+1,i.index+1)
+                else:
+                    mirror_id = (i.index+1,diff[0],diff[1])
+                    if mirror_id not in pos_mirror:
+                        pos_mirror[mirror_id] = tuple(np.array(pos[i.index+1])+box*diff)
+                    G.add_edge(j+1,mirror_id)
+        pos.update(pos_mirror)
+
+        #mirror set
+        mirror_list = list(pos_mirror.keys())
+        hb_percentage_list_mirror = np.array([hb_percentage_list_probe[x[0]-1] for x in mirror_list])
+        hb_mol_number_list_mirror = [hb_mol_number_list_probe[x[0]-1] for x in mirror_list]
+        #        weight[(j+1,i.index+1)] = float(i.H_interactions[j]) / i._n
+        # nx.draw(G,nx.spring_layout(G),with_labels = True)
+        
+        nodes_probe = nx.draw_networkx_nodes(G,pos_probe,nodelist = probe_list , node_size = nodesizemin+nodesizelen*hb_percentage_list_probe,node_color=hb_mol_number_list_probe,node_shape= 's',cmap= qyp,vmin = -0.5 ,vmax = 4.5,alpha = 0.5,edgecolors = 'purple')
+        nodes_target = nx.draw_networkx_nodes(G,pos_target,nodelist = target_list , node_size = nodesizemin+nodesizelen*hb_percentage_list_target,node_color=hb_mol_number_list_target,node_shape= 'o',cmap= qyp,vmin = -0.5 ,vmax = 4.5,alpha = 0.5,edgecolors = 'red')
+        nodes_mirror =  nx.draw_networkx_nodes(G,pos_mirror,nodelist = mirror_list , node_size = nodesizemin+nodesizelen*hb_percentage_list_mirror,node_color=hb_mol_number_list_mirror,node_shape= 's',cmap= qyp,vmin = -0.5 ,vmax = 4.5,alpha = 0.2,edgecolors = 'purple')
+        nodes_probe.set_zorder(-1)
+        nodes_target.set_zorder(0)
+        nodes_mirror.set_zorder(-2)
+        arrow_style = mpl.patches.ArrowStyle.Fancy(head_length=.3, head_width=.3, tail_width=.05)
+        edges = nx.draw_networkx_edges(G,pos,node_size=10,width=0.5,arrowstyle=arrow_style,arrowsize=8,alpha=0.9)#,edge_color=weight,edge_cmap='tab10',edge_vmin=0.,edge_vmax=1.)
+        # nx.draw_networkx_labels(G,pos)
+        
+        plt.plot([self._box[0],self._box[1],self._box[1],self._box[0],self._box[0]],[self._box[2],self._box[2],self._box[3],self._box[3],self._box[2]])
+        k = 1.3
+        plt.plot(np.array([self._box[0],self._box[1],self._box[1],self._box[0],self._box[0]])*k,np.array([self._box[2],self._box[2],self._box[3],self._box[3],self._box[2]])*k,color='black')
+
+        #nx.draw_networkx_edge_labels(G,pos,edge_labels = weight,label_pos = 0.5,font_size=16,font_weight='bold')    
+        plt.xlim(self._box[0]*k,self._box[1]*k)
+        plt.ylim(self._box[2]*k,self._box[3]*k)
+        plt.gca().set_aspect("equal")
+        plt.colorbar(nodes_probe,orientation = 'vertical',ticks=np.linspace(0,4,5,dtype=np.int16))
+        path = os.path.join(self.frame_path,filename+f'_{self._time}_single_plus'+'.jpg')
+        plt.savefig(path,dpi = 300)
+        plt.close()
+
+
     #get system slice
     def get_slice_system(self,probe_mol_id=[],target_mol_id=[]):
         s = System(np.array(self._box),time=self._time)
