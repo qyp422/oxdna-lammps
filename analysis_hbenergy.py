@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2023-03-14 15:24:46
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-09-18 20:33:40
+LastEditTime: 2023-09-19 15:53:24
 Description: 
 
 Copyright (c) 2023 by qyp422, All Rights Reserved. 
@@ -63,6 +63,7 @@ def main():
             w.add_hb_message(t,r._system.hb_percentage)
             w.add_hb_energy(t,r._system.total_hb_energy)
             w.add_array_structure(t,r._system.decision_structure())
+            w.add_array_target(t,r._system.count_target())
             #hbgraph must get_hb_pair first
             # if (r.frame_num-1) % frequency == 0 :
             # #    r._system.get_system_graph()
@@ -82,7 +83,7 @@ def main():
                 w.cpu_time(t,end_d - start_d)
 
         # reader condition
-        condition = True # if 178<= r.frame_num <= 179 else False
+        condition = True # if 2532<= r.frame_num <= 2534 else False
     # close file
 
     r._system.get_system_graph(path=pwd,filename = filename)

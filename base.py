@@ -3,7 +3,7 @@ Author: qyp422
 Date: 2022-10-13 16:21:26
 Email: qyp422@qq.com
 LastEditors: Please set LastEditors
-LastEditTime: 2023-09-18 20:31:41
+LastEditTime: 2023-09-20 20:23:50
 Description: system meassage
 
 Copyright (c) 2022 by qyp422, All Rights Reserved. 
@@ -666,6 +666,21 @@ class System():
             target_percentage = 0.0
         return [hb_number/self.probe_n , float(probe_mol_n)/self.probe_mol , float(target_mol_n)/self.target_mol , probe_percentage , target_percentage],hb_percentage_list.tolist(),hb_mol_number_list
 
+    def count_target(self):
+        count_array = [0,0,0,0,0,0]
+        target_search_set = set(range(self.probe_mol,self._N_strands))
+        while len(target_search_set):
+            tem_target = target_search_set.pop()
+            tem_count = len(self._strands[tem_target].H_interactions)
+            if tem_count > 4 :
+                count_array[5] += 1
+            else:
+                count_array[tem_count] += 1
+        return count_array
+
+
+
+
     def decision_structure(self):
         """
         structure_array: array
@@ -776,7 +791,7 @@ class System():
             for i in register:
                 register_number += register[i]
                 register_total += register[i]*i
-            if abs(register_total) <= ((s_target._n+1) // 3 * register_number):
+            if (abs(register_total) <= ((s_target._n+1) // 4 * register_number)) and (register_number > (s_target._n - (s_target._n+1) // 4)):
                 return 1
             else:
                 # print(register,'66666666666666666')
@@ -2109,7 +2124,7 @@ class File_system(Plot_system):
         self._band_file = False
         self._band_percentage_flie = False
         self._array_structure_file = False
-        
+        self._array_probe_mol = False
 
         
     def plot_probe_system(self,file_name,v_max=1):
@@ -2223,7 +2238,12 @@ class File_system(Plot_system):
         if not self._array_structure_file:
             self._array_structure_file = open(os.path.join(self._pwd,str(self._filename)) + '_array_structure.data','w+')
         self._array_structure_file.write(f'{time} '+' '.join(str(x) for x in message)+'\n')
-    
+
+    def add_array_target(self,time : int ,message):
+        if not self._array_probe_mol:
+            self._array_probe_mol = open(os.path.join(self._pwd,str(self._filename)) + '_array_probe_mol.data','w+')
+        self._array_probe_mol.write(f'{time} '+' '.join(str(x) for x in message)+'\n')
+
     # def string_file(self,filename,message):
     #     with open(filename,'w+') as f:
     #         f.write(message)
@@ -2341,9 +2361,13 @@ class File_system(Plot_system):
 
 
             print('_array_structure file done!')
+        
+        if self._array_probe_mol:
+            self._array_probe_mol.close()
+
 # for text
 if __name__ == "__main__":
-    flag = 0# True for every fold else for single file
+    flag = 1# True for every fold else for single file
     num_names = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
     filename_hb = [f'original_T_300_{i}.lammpstrj_hb.data' for i in num_names ]
     filename_kde = [f'original_T_300_{i}.lammpstrj_kde.data' for i in num_names ]
